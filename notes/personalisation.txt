@@ -1,0 +1,12 @@
+=== MY REMOTEOPS PERSONALISATION ===
+Registration number: IT24100816
+Numeric part:        24100816
+
+Agent port:          9410
+SID tag:             6180
+Auth token:          OPS-0816
+Log file:            remoteops_IT24100816.log
+Storage path:        ./agentfiles/IT24100816/
+Source files:        agent_816.c, controller_816.c
+Makefile:            Makefile_816
+Submission ZIP:      IE3090_IT24100816.zip
