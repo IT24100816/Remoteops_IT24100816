@@ -9,6 +9,7 @@
  *
  * Concurrency: thread-per-connection (detached pthreads).
  * A single mutex protects the shared log file.
+ * Each session may have at most one active UDP monitor thread.
  */
 
 #include <stdio.h>
@@ -65,13 +66,16 @@ static void log_event(const char *fmt, ...) {
     pthread_mutex_unlock(&log_mutex);
 }
 
-/* ---------- per-connection buffered reader ---------- */
+/* ---------- per-connection buffered reader + monitor state ---------- */
 typedef struct {
     int  fd;
     char ip[INET_ADDRSTRLEN];
     unsigned char buf[8192];
     size_t buf_len;
     size_t buf_pos;
+
+    volatile int monitor_active;   /* 1 while a monitor thread runs */
+    int          udp_port;         /* controller's requested UDP port */
 } session_t;
 
 static int fill_buffer(session_t *s) {
@@ -116,7 +120,6 @@ static int send_line(int fd, const char *str) {
     return 0;
 }
 
-/* Send exactly n raw bytes (loops until all bytes are out). */
 static int send_exact(int fd, const unsigned char *buf, size_t n) {
     size_t sent = 0;
     while (sent < n) {
@@ -209,8 +212,6 @@ static int build_exec(const char *name, char *out, size_t outlen) {
 
 /* ---------- PUT / GET ---------- */
 
-/* Reject any filename containing '/' or "..", to keep uploads inside
- * the personalised storage directory. Returns 1 if safe, 0 if not. */
 static int is_safe_filename(const char *name) {
     if (!name || !*name) return 0;
     if (strchr(name, '/'))  return 0;
@@ -218,8 +219,6 @@ static int is_safe_filename(const char *name) {
     return 1;
 }
 
-/* Handle PUT: filename and filesize already parsed. Reads exactly
- * filesize raw bytes from the session and saves them. */
 static void handle_put(session_t *s, const char *filename, long filesize,
                        const char *ip) {
     char resp[512];
@@ -236,8 +235,6 @@ static void handle_put(session_t *s, const char *filename, long filesize,
                  "ERR 004 FILE_TOO_LARGE SID:%s", SID_TAG);
         send_line(s->fd, resp);
         log_event("PUT rejected (size %ld) from %s", filesize, ip);
-        /* Drain the bytes the client is about to send, so the socket
-         * stays in a clean state for the next command. */
         unsigned char drain[4096];
         long remaining = filesize;
         while (remaining > 0) {
@@ -258,7 +255,6 @@ static void handle_put(session_t *s, const char *filename, long filesize,
                  "ERR 006 FILE_WRITE_FAILED SID:%s", SID_TAG);
         send_line(s->fd, resp);
         log_event("PUT failed (fopen %s) from %s", path, ip);
-        /* drain */
         unsigned char drain[4096];
         long remaining = filesize;
         while (remaining > 0) {
@@ -295,8 +291,6 @@ static void handle_put(session_t *s, const char *filename, long filesize,
     log_event("PUT OK from %s: %s (%ld bytes)", ip, filename, filesize);
 }
 
-/* Handle GET: filename already parsed. Sends OK FILE_SEND line, then
- * exactly filesize raw bytes. */
 static void handle_get(session_t *s, const char *filename, const char *ip) {
     char resp[512];
 
@@ -320,7 +314,6 @@ static void handle_get(session_t *s, const char *filename, const char *ip) {
         return;
     }
 
-    /* Determine file size */
     if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return; }
     long filesize = ftell(fp);
     if (filesize < 0) { fclose(fp); return; }
@@ -348,6 +341,48 @@ static void handle_get(session_t *s, const char *filename, const char *ip) {
     log_event("GET OK to %s: %s (%ld bytes)", ip, filename, filesize);
 }
 
+/* ---------- UDP monitor thread ---------- */
+
+static void *monitor_thread(void *arg) {
+    session_t *s = (session_t *)arg;
+
+    int udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udp_fd < 0) {
+        log_event("MONITOR: socket() failed for %s", s->ip);
+        s->monitor_active = 0;
+        return NULL;
+    }
+
+    struct sockaddr_in dst;
+    memset(&dst, 0, sizeof(dst));
+    dst.sin_family = AF_INET;
+    dst.sin_port   = htons(s->udp_port);
+    inet_pton(AF_INET, s->ip, &dst.sin_addr);
+
+    log_event("MONITOR started: udp -> %s:%d", s->ip, s->udp_port);
+
+    while (s->monitor_active) {
+        char payload[256];
+        char sysbuf[256];
+        build_sysinfo(sysbuf, sizeof(sysbuf));
+        /* strip the leading "OK " and append '\n' so receivers can
+         * display one datagram per line (nc -u -l has no framing). */
+        snprintf(payload, sizeof(payload), "%s\n", sysbuf + 3);
+
+        sendto(udp_fd, payload, strlen(payload), 0,
+               (struct sockaddr *)&dst, sizeof(dst));
+
+        for (int i = 0; i < 10 && s->monitor_active; i++) {
+            struct timespec ts = { 0, 100 * 1000 * 1000 };
+            nanosleep(&ts, NULL);
+        }
+    }
+
+    close(udp_fd);
+    log_event("MONITOR stopped for %s:%d", s->ip, s->udp_port);
+    return NULL;
+}
+
 /* ---------- per-client thread ---------- */
 
 static void *handle_client(void *arg) {
@@ -369,9 +404,9 @@ static void *handle_client(void *arg) {
             break;
         }
 
-        char verb[64] = {0};
+        char verb[64]      = {0};
         char arg1[MAX_LINE] = {0};
-        char arg2[64]  = {0};
+        char arg2[64]      = {0};
         sscanf(line, "%63s %4095s %63s", verb, arg1, arg2);
 
         log_event("CMD from %s: %s", ip, line);
@@ -420,6 +455,49 @@ static void *handle_client(void *arg) {
         else if (!strcmp(verb, "GET")) {
             handle_get(s, arg1, ip);
         }
+        else if (!strcmp(verb, "MONITOR")) {
+            if (!strcmp(arg1, "START")) {
+                if (s->monitor_active) {
+                    snprintf(resp, sizeof(resp),
+                             "ERR 007 ALREADY_MONITORING SID:%s", SID_TAG);
+                    send_line(s->fd, resp);
+                } else {
+                    int port = atoi(arg2);
+                    if (port <= 0 || port > 65535) {
+                        snprintf(resp, sizeof(resp),
+                                 "ERR 008 BAD_UDP_PORT SID:%s", SID_TAG);
+                        send_line(s->fd, resp);
+                    } else {
+                        s->udp_port       = port;
+                        s->monitor_active = 1;
+                        pthread_t mtid;
+                        if (pthread_create(&mtid, NULL,
+                                           monitor_thread, s) == 0) {
+                            pthread_detach(mtid);
+                            snprintf(resp, sizeof(resp),
+                                     "OK MONITOR_STARTED SID:%s", SID_TAG);
+                            send_line(s->fd, resp);
+                        } else {
+                            s->monitor_active = 0;
+                            snprintf(resp, sizeof(resp),
+                                     "ERR 009 MONITOR_FAILED SID:%s", SID_TAG);
+                            send_line(s->fd, resp);
+                        }
+                    }
+                }
+            }
+            else if (!strcmp(arg1, "STOP")) {
+                s->monitor_active = 0;
+                snprintf(resp, sizeof(resp),
+                         "OK MONITOR_STOPPED SID:%s", SID_TAG);
+                send_line(s->fd, resp);
+            }
+            else {
+                snprintf(resp, sizeof(resp),
+                         "ERR 002 COMMAND_NOT_ALLOWED SID:%s", SID_TAG);
+                send_line(s->fd, resp);
+            }
+        }
         else {
             snprintf(resp, sizeof(resp),
                      "ERR 002 COMMAND_NOT_ALLOWED SID:%s", SID_TAG);
@@ -427,8 +505,11 @@ static void *handle_client(void *arg) {
         }
     }
 
+    /* Signal any monitor thread to stop. Do NOT free(s) — the monitor
+     * thread may still be reading s->monitor_active / s->udp_port.
+     * ~8 KB leak per connection; documented in design diary. */
+    s->monitor_active = 0;
     close(s->fd);
-    free(s);
     return NULL;
 }
 
@@ -479,6 +560,8 @@ int main(void) {
         s->fd      = client_fd;
         s->buf_len = 0;
         s->buf_pos = 0;
+        s->monitor_active = 0;
+        s->udp_port       = 0;
         inet_ntop(AF_INET, &client_addr.sin_addr,
                   s->ip, sizeof(s->ip));
 
