@@ -98,36 +98,46 @@ int main(void) {
         /* --- command dispatch --- */
         if (strcmp(verb, "AUTH") == 0) {
             if (strcmp(arg, AUTH_TOKEN) == 0) {
-                /* Step C will set authenticated=1 and reply OK.
-                 * For now, still reject — we're only building the framing. */
+                authenticated = 1;
+                printf("[agent] AUTH ok from %s\n",
+                       inet_ntoa(client_addr.sin_addr));
                 char resp[128];
                 snprintf(resp, sizeof(resp),
-                         "ERR 001 AUTH_FAILED SID:%s", SID_TAG);
+                         "OK AUTHENTICATED SID:%s", SID_TAG);
                 send_line(client_fd, resp);
             } else {
+                printf("[agent] AUTH failed (bad token)\n");
                 char resp[128];
                 snprintf(resp, sizeof(resp),
                          "ERR 001 AUTH_FAILED SID:%s", SID_TAG);
                 send_line(client_fd, resp);
             }
         }
-        else if (strcmp(verb, "QUIT") == 0) {
-            /* Even QUIT requires auth per §2.2(2).
-             * If already authed, Step C will reply "OK BYE SID:6180". */
-            if (!authenticated) {
-                char resp[128];
-                snprintf(resp, sizeof(resp),
-                         "ERR 001 AUTH_REQUIRED SID:%s", SID_TAG);
-                send_line(client_fd, resp);
-            }
-        }
-        else {
+        else if (!authenticated) {
             /* Every other command before AUTH succeeds → reject */
             char resp[128];
             snprintf(resp, sizeof(resp),
                      "ERR 001 AUTH_REQUIRED SID:%s", SID_TAG);
             send_line(client_fd, resp);
         }
+        else if (strcmp(verb, "QUIT") == 0) {
+            char resp[128];
+            snprintf(resp, sizeof(resp),
+                     "OK BYE SID:%s", SID_TAG);
+            send_line(client_fd, resp);
+            printf("[agent] client requested QUIT, closing\n");
+            break;
+        }
+        else {
+            /* Authenticated, but command not implemented yet.
+             * Steps D+ will add SYSINFO / LISTPROC / EXEC / PUT / GET /
+             * MONITOR START|STOP handlers here. */
+            char resp[256];
+            snprintf(resp, sizeof(resp),
+                     "ERR 002 COMMAND_NOT_ALLOWED SID:%s", SID_TAG);
+            send_line(client_fd, resp);
+        }
+
     }
 
     close(client_fd);
