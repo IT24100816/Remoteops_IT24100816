@@ -1,6 +1,9 @@
 # Prompt Log — AI Interactions During Part 1
 
 **Student:** W M S A Jayasena
+# Prompt Log — AI Interactions During Part 1
+
+**Student:** W M S A Jayasena
 **Registration Number:** IT24100816
 **Module:** IE3090 — Network Programming
 **Assignment:** RemoteOps — Part 1 (Take-Home Implementation)
@@ -21,8 +24,8 @@ sockets for my IE3090 assignment. I don't know anything about this. Guide me
 step by step. My environment is CentOS 10 in a VMware Fusion VM on a MacBook."
 
 **Response summary:**
-The AI explained the socket lifecycle (socket → bind → listen → accept →
-recv/send → close) and proposed a phased plan (Steps A–I) starting with a
+The AI explained the socket lifecycle (socket, bind, listen, accept,
+recv/send, close) and proposed a phased plan (Steps A to I) starting with a
 minimal Agent skeleton.
 
 **What I did with it:**
@@ -30,8 +33,8 @@ Used the phased plan as my working structure. Set up the VM, verified gcc
 and make were installed, and confirmed the project folder layout.
 
 **What I changed / rejected:**
-Rejected the suggestion to first build a standalone echo server exercise —
-it was not a deliverable and I wanted to spend time on the real assignment.
+Rejected the suggestion to first build a standalone echo server exercise.
+It was not a deliverable and I wanted to spend time on the real assignment.
 Confirmed with the AI that skipping it was fine.
 
 ---
@@ -40,7 +43,8 @@ Confirmed with the AI that skipping it was fine.
 
 **Prompt:**
 "My registration number is IT24100816. Calculate my personalised Agent port,
-SID tag, auth token, log filename, and storage path from §2.4 of the brief."
+SID tag, auth token, log filename, and storage path from section 2.4 of the
+brief."
 
 **Response summary:**
 Walked through the formula and produced:
@@ -51,12 +55,12 @@ Walked through the formula and produced:
 - Storage = ./agentfiles/IT24100816/
 
 **What I did with it:**
-Verified each value by hand against the worked example in §2.4 (registration
-IT21123456 → port 9112, SID 6543, token OPS-3456). Saved the values to
-notes/personalisation.txt.
+Verified each value by hand against the worked example in section 2.4
+(registration IT21123456 gives port 9112, SID 6543, token OPS-3456). Saved
+the values to notes/personalisation.txt.
 
 **What I changed / rejected:**
-Nothing on the calculation — I verified it independently and it was correct.
+Nothing on the calculation. I verified it independently and it was correct.
 
 ---
 
@@ -67,18 +71,19 @@ Nothing on the calculation — I verified it independently and it was correct.
 accepts one client, and sends a greeting. I need to understand every line."
 
 **Response summary:**
-Provided a ~90-line agent_816.c with socket(), bind(), listen(), accept(),
-recv(), send(), close(). Explained each call.
+Provided a roughly 90-line agent_816.c using socket(), bind(), listen(),
+accept(), recv(), send(), and close(). Explained each call.
 
 **What I did with it:**
-Typed the file manually (not copy-pasted). Compiled with `make agent_816`
-and tested with `nc 127.0.0.1 9410`. It printed
+Typed the file manually, not copy-pasted. Compiled with make agent_816 and
+tested with nc 127.0.0.1 9410. It printed the message
 "OK REMOTEOPS AGENT READY SID:6180".
 
 **What I changed / rejected:**
-Renamed variables to my own style (e.g. listen_fd, client_fd). Added my own
-personalisation comments at the top. Had to add setsockopt(SO_REUSEADDR)
-after a bind error on restart — the AI had not included it initially.
+Renamed variables to my own style (for example listen_fd, client_fd). Added
+my own personalisation comments at the top. Had to add
+setsockopt(SO_REUSEADDR) after a bind error on restart. The AI had not
+included it initially.
 
 ---
 
@@ -90,17 +95,17 @@ line, or multiple lines in one buffer. How do I implement this correctly?"
 
 **Response summary:**
 Explained that TCP is a byte stream, not a message stream, and proposed a
-read_line() that reads one byte at a time until '\n', and a send_line() that
-always appends '\n'.
+read_line() that reads one byte at a time until the newline character, and a
+send_line() that always appends a newline.
 
 **What I did with it:**
-Implemented both helpers. Tested with
-`printf 'SYSINFO\nAUTH WRONG\n' | nc 127.0.0.1 9410` — got two correctly
-ordered responses, proving multi-line framing.
+Implemented both helpers. Tested with a single printf sending SYSINFO
+followed by an incorrect AUTH line, piped to nc on port 9410. Received two
+correctly ordered responses, proving multi-line framing works.
 
 **What I changed / rejected:**
 Wrote my own variable names and comments. Kept the one-byte-at-a-time version
-for correctness; noted that a buffered version came later in Step F.
+for correctness. Noted that a buffered version came later in Step F.
 
 ---
 
@@ -108,48 +113,50 @@ for correctness; noted that a buffered version came later in Step F.
 
 **Prompt:**
 "How should I implement the AUTH command so that all other commands are
-rejected until it succeeds, as required by §2.2(2)?"
+rejected until it succeeds, as required by requirement 2 of section 2.2?"
 
 **Response summary:**
 Suggested a local int authenticated flag per connection, set to 1 only when
-the token matches exactly. All non-AUTH commands guarded by a single
-`if (!authenticated)` check.
+the token matches exactly. All non-AUTH commands guarded by a single check
+on that flag.
 
 **What I did with it:**
-Implemented the flag and the AUTH branch. Verified with three tests: AUTH
-with correct token → "OK AUTHENTICATED SID:6180"; wrong token → "ERR 001
-AUTH_FAILED"; command before AUTH → "ERR 001 AUTH_REQUIRED". All passed.
+Implemented the flag and the AUTH branch. Verified with three tests. AUTH
+with correct token returns OK AUTHENTICATED SID:6180. Wrong token returns
+ERR 001 AUTH_FAILED. Command sent before AUTH returns ERR 001 AUTH_REQUIRED.
+All three passed.
 
 **What I changed / rejected:**
-Chose to allow re-AUTH after failure (the AI's initial version didn't specify).
-Added QUIT handling with "OK BYE SID:6180" at the same time.
+Chose to allow re-AUTH after a failure, which the AI's initial version did
+not specify. Added QUIT handling with OK BYE SID:6180 at the same time.
 
 ---
 
 ## Entry 6 — Step D: SYSINFO, LISTPROC, and EXEC whitelist
 
 **Prompt:**
-"Implement SYSINFO (reading CPU/mem/uptime from /proc), LISTPROC (via
-popen ps), and EXEC with the fixed whitelist DATE/UPTIME/DISKFREE/HOSTNAME/
-WHOAMI. Emphasise why the EXEC whitelist must never pass user input to a
-shell."
+"Implement SYSINFO reading CPU, memory, and uptime from /proc. Implement
+LISTPROC using popen with ps. Implement EXEC with the fixed whitelist DATE,
+UPTIME, DISKFREE, HOSTNAME, WHOAMI. Emphasise why the EXEC whitelist must
+never pass user input to a shell."
 
 **Response summary:**
-Gave three functions:
-- build_sysinfo() reading /proc/loadavg, /proc/meminfo, /proc/uptime.
-- build_listproc() using popen("ps -eo comm --no-headers").
-- build_exec() as a hardcoded if/else if chain mapping each whitelisted name
-  to a string-literal shell command — never the user's raw input.
+Gave three functions. build_sysinfo() reads /proc/loadavg, /proc/meminfo,
+and /proc/uptime. build_listproc() uses popen on ps with comm and
+no-headers. build_exec() is a hardcoded if/else if chain mapping each
+whitelisted name to a string-literal shell command. The user's raw input is
+never passed to system() or popen().
 
 **What I did with it:**
-Implemented all three. Tested EXEC rm -rf /, EXEC ls, EXEC cat /etc/passwd —
-all correctly rejected with "ERR 002 COMMAND_NOT_ALLOWED". Confirmed the
-security property: user input never reaches system() or popen().
+Implemented all three. Tested EXEC rm -rf /, EXEC ls, and EXEC cat
+/etc/passwd. All three were correctly rejected with ERR 002
+COMMAND_NOT_ALLOWED. Confirmed the security property: user input never
+reaches a shell.
 
 **What I changed / rejected:**
-Capped LISTPROC output with ",..." truncation because the process list was
-very long. Capped EXEC output to the first line only (protocol requires
-single-line responses).
+Capped LISTPROC output with a truncation marker because the process list was
+very long. Capped EXEC output to the first line only, since the protocol
+requires single-line responses.
 
 ---
 
@@ -162,113 +169,113 @@ remoteops_IT24100816.log with timestamps, protected by a mutex."
 
 **Response summary:**
 Recommended thread-per-connection with detached pthreads. Explained the
-trade-offs versus fork and versus select/poll. Provided a log_event()
+trade-offs versus fork and versus select or poll. Provided a log_event()
 function using pthread_mutex_t and localtime_r.
 
 **What I did with it:**
-Implemented threading with pthread_create + pthread_detach. Tested with
-`for i in 1 2 3 4 5; do (printf 'AUTH OPS-0816\nSYSINFO\nQUIT\n' | nc
-127.0.0.1 9410 &) done; wait` — all 5 succeeded. Also tested an abrupt
-Ctrl+C mid-connection; the Agent detected the disconnect and logged
-"DISCONNECT ... [unauthed]" without crashing.
+Implemented threading with pthread_create and pthread_detach. Tested with a
+shell loop that starts five parallel nc clients sending AUTH, SYSINFO, QUIT.
+All five succeeded. Also tested an abrupt Ctrl+C mid-connection. The Agent
+detected the disconnect and logged a DISCONNECT line without crashing.
 
 **What I changed / rejected:**
-Initially log_event only wrote to the file. I asked the AI to also echo to
-stdout for easier live debugging — it agreed and I applied that change.
-Committed as a separate "Step E-fix" commit.
+Initially log_event only wrote to the log file. I asked the AI to also echo
+to stdout for easier live debugging. It agreed and I applied the change.
+Committed as a separate Step E fix commit.
 
 ---
 
 ## Entry 8 — Step F: PUT and GET with exact byte-count framing
 
 **Prompt:**
-"The protocol says PUT and GET must transfer exactly <filesize> bytes
-regardless of how many recv()/send() calls it takes. My current read_line()
+"The protocol says PUT and GET must transfer exactly the file size in bytes
+regardless of how many recv and send calls it takes. My current read_line
 reads one byte at a time, which will not work for binary data. How do I fix
 this?"
 
 **Response summary:**
-Proposed a per-session 8 KB buffer with two helpers: sread_line() (reads up
-to '\n', leaves excess bytes in buffer) and sread_exact(n) (drains buffer
-first, then recv()s remaining). Also proposed send_exact() for GET.
+Proposed a per-session 8 KB buffer with two helpers. sread_line reads up to
+the newline and leaves excess bytes in the buffer. sread_exact reads exactly
+N bytes, draining the buffer first and then calling recv for the remainder.
+Also proposed send_exact for GET.
 
 **What I did with it:**
-Rewrote the reader infrastructure. Tested with a 1 MB random file: uploaded
+Rewrote the reader infrastructure. Tested with a 1 MB random file. Uploaded
 via PUT, downloaded via GET, extracted the raw bytes from the GET response
-with a Python script, then compared with cmp and sha256sum. All three hashes
-matched — byte-for-byte identical.
+using a small Python script, then compared with cmp and sha256sum. All three
+hashes matched. The file was byte-for-byte identical.
 
 **What I changed / rejected:**
-Added is_safe_filename() to reject filenames containing '/' or '..' after
-asking about security. Added draining logic in handle_put so the socket
-stays framed on ERR 004 rejection. Capped uploads at 10 MB.
+Added is_safe_filename to reject filenames containing a slash or double dot,
+after asking about security. Added draining logic in handle_put so the
+socket stays framed when a file is rejected with ERR 004. Capped uploads at
+10 MB.
 
 ---
 
 ## Entry 9 — Step G: UDP monitoring thread
 
 **Prompt:**
-"Implement MONITOR START <udp_port> and MONITOR STOP. When START is issued,
-the Agent should send periodic SYSINFO datagrams over UDP to the Controller's
-IP at the given port. The datagram must include SID:6180. STOP must stop
-the stream. Also handle disconnect while monitoring."
+"Implement MONITOR START with a UDP port argument and MONITOR STOP. When
+START is issued, the Agent should send periodic SYSINFO datagrams over UDP
+to the Controller's IP at the given port. The datagram must include the SID
+tag 6180. STOP must stop the stream. Also handle disconnect while
+monitoring."
 
 **Response summary:**
 Proposed a per-session monitor_active flag, a monitor_thread spawned on
-START, and a 100 ms polling loop so STOP takes effect quickly.
+START, and a 100 millisecond polling loop so STOP takes effect quickly.
 
 **What I did with it:**
 Implemented monitor_thread with a 1 Hz send loop and 100 ms polling. Tested
-with `nc -u -l 9999` and `MONITOR START 9999`.
+with nc on UDP port 9999 and MONITOR START 9999.
 
 **What I changed / rejected:**
 The AI's first version produced datagrams without a trailing newline, so
-`nc -u -l 9999` concatenated them into a wall of text. I asked for a fix and
-we added '\n' to the payload. Committed as "Step G-fix". Also chose 1 second
-as the interval (documented in the report).
+nc -u -l concatenated them into a wall of text. I asked for a fix and we
+added a newline to the payload. Committed as Step G fix. Also chose 1 second
+as the interval and documented the choice in the report.
 
 ---
 
 ## Entry 10 — Step H: Interactive Controller program
 
 **Prompt:**
-"Write the interactive Controller (controller_816.c) that connects to the
+"Write the interactive Controller, controller_816.c, that connects to the
 Agent, reads commands from stdin, sends them over TCP, and prints responses.
-For MONITOR START, it should also spawn a UDP listener thread that prints
+For MONITOR START it should also spawn a UDP listener thread that prints
 incoming datagrams."
 
 **Response summary:**
-Provided a full controller_816.c with:
-- TCP connection to 127.0.0.1:9410
-- Interactive prompt reading from stdin
-- Special handling for AUTH, PUT (read local file, send bytes), GET (read
-  header, extract N bytes to ./downloads/)
-- UDP listener thread spawned on MONITOR START
+Provided a full controller_816.c with a TCP connection to 127.0.0.1 port
+9410, an interactive prompt reading from stdin, special handling for AUTH,
+PUT (read local file, send bytes), GET (read header, extract N bytes to a
+downloads folder), and a UDP listener thread spawned on MONITOR START.
 
 **What I did with it:**
 Implemented the full file. Tested every command interactively. Confirmed the
-[UDP] lines appeared live while the prompt stayed ready.
+UDP lines appeared live while the prompt stayed ready.
 
 **What I changed / rejected:**
 Reused the same buffered reader design as the Agent for consistency. Did not
-cache auth state — kept the Controller a "transparent protocol client" so I
-could point at any line in the Viva and say "this is exactly what went on
-the wire".
+cache auth state. Kept the Controller as a transparent protocol client so I
+can point at any line in the Viva and say that is exactly what went on the
+wire.
 
 ---
 
 ## Entry 11 — Report structure and content
 
 **Prompt:**
-"Help me structure the Implementation Report for §2.7 of the brief. Give me
-the full content ready to paste into Word, with markers showing where each
-screenshot should go."
+"Help me structure the Implementation Report for section 2.7 of the brief.
+Give me the full content ready to paste into Word, with markers showing
+where each screenshot should go."
 
 **Response summary:**
-Provided a 9-section report structure (Personalisation, Architecture,
+Provided a nine-section report structure: Personalisation, Architecture,
 Concurrency, Protocol evidence, Personalisation proof, Annotated code,
-Execution screenshots, Testing summary, Design rationale) with figure markers
-indicating where each screenshot belongs.
+Execution screenshots, Testing summary, and Design rationale. Included
+figure markers indicating where each screenshot belongs.
 
 **What I did with it:**
 Wrote the report in Word on my MacBook. Inserted my own screenshots at each
@@ -287,12 +294,12 @@ match my real evidence.
 "Review my Implementation Report and point out issues."
 
 **Response summary:**
-Flagged figure/caption mismatches in Section 6, missing screenshots, TOC
-formatting issues, and a few typos.
+Flagged figure and caption mismatches in the Annotated Code section, some
+missing screenshots, table-of-contents formatting issues, and a few typos.
 
 **What I did with it:**
 Fixed the caption mismatches, added the missing screenshots, updated the
-Word TOC, and corrected typos.
+Word table of contents, and corrected typos.
 
 **What I changed / rejected:**
 Reviewed each suggested fix against the brief and my report. Applied only
@@ -303,35 +310,35 @@ the fixes that were correct.
 ## Entry 13 — Screenshot strategy
 
 **Prompt:**
-"Should I use the interactive Controller or printf | nc for the protocol
-screenshots? Which gives stronger evidence?"
+"Should I use the interactive Controller or nc for the protocol screenshots?
+Which gives stronger evidence?"
 
 **Response summary:**
 Explained that both are acceptable, but that using the real Controller
-demonstrates the Controller program working — a required deliverable per
-§2.9. Recommended the Controller for protocol screenshots and shell commands
-for OS-level proofs (ss, ls, sha256sum).
+demonstrates the Controller program working, which is a required
+deliverable. Recommended the Controller for protocol screenshots and shell
+commands for OS-level proofs such as ss, ls, and sha256sum.
 
 **What I did with it:**
 Re-took the AUTH and other protocol screenshots using the interactive
 Controller. Kept the shell-based screenshots for personalisation proof.
 
 **What I changed / rejected:**
-Used `printf | nc` for the multi-line framing test (Figure 7) because the
-interactive Controller sends one command per Enter, so it cannot easily
-demonstrate "4 commands in one TCP write".
+Used nc for the multi-line framing test because the interactive Controller
+sends one command per Enter, so it cannot easily demonstrate four commands
+in one TCP write.
 
 ---
 
 ## Entry 14 — Prompt log itself
 
 **Prompt:**
-"What does §3 of the assignment require for the prompt log? Give me a
-template."
+"What does the Usage of AI section of the assignment require for the prompt
+log? Give me a template."
 
 **Response summary:**
-Explained the format (tool / prompt / usage / changes) and emphasised
-honesty, specificity, and critical engagement with AI output.
+Explained the format (tool, prompt, usage, changes) and emphasised honesty,
+specificity, and critical engagement with AI output.
 
 **What I did with it:**
 Wrote this prompt log using that structure. Amended each entry to accurately
@@ -351,5 +358,5 @@ and tests. Removed any wording that did not reflect real interactions.
 - All AI-generated code was typed manually, tested against the assignment
   specification, and modified where necessary.
 - Sections of AI output that I rejected or changed are noted in each entry.
-- I am prepared to explain every part of my submission in the Viva, including
-  any part that was influenced by AI output.
+- I am prepared to explain every part of my submission in the Viva,
+  including any part that was influenced by AI output.
