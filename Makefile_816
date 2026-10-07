@@ -1,13 +1,33 @@
-CC      = gcc
-CFLAGS  = -Wall -Wextra -pthread
+# Makefile_816 — RemoteOps build file
+# Registration Number: IT24100816
+#
+# Builds:
+#   agent_816       — the Agent (server)
+#   controller_816  — the Controller (client)
+#
+# Usage:
+#   make            — build both binaries
+#   make agent_816  — build only the Agent
+#   make controller_816 — build only the Controller
+#   make clean      — remove built binaries
 
+CC       = gcc
+CFLAGS   = -Wall -Wextra -pthread
+LDFLAGS  = -pthread
+
+# Default target: build both programs
 all: agent_816 controller_816
 
+# Agent binary
 agent_816: agent_816.c
-	$(CC) $(CFLAGS) -o agent_816 agent_816.c
+	$(CC) $(CFLAGS) -o agent_816 agent_816.c $(LDFLAGS)
 
+# Controller binary
 controller_816: controller_816.c
-	$(CC) $(CFLAGS) -o controller_816 controller_816.c
+	$(CC) $(CFLAGS) -o controller_816 controller_816.c $(LDFLAGS)
 
+# Remove compiled binaries
 clean:
 	rm -f agent_816 controller_816
+
+.PHONY: all clean
