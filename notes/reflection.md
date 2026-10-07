@@ -2,7 +2,7 @@
 
 ## Which AI tools did I use, and at which stages?
 
-I used [tool name] throughout Part 1. At the start it helped me set up
+I used Deepseek and Claude AI throughout Part 1. At the start it helped me set up
 a Linux VM (CentOS 10 in VMware Fusion) and understand the assignment's
 personalisation requirements. During implementation it provided a
 step-by-step guide covering the socket lifecycle, buffered readers, and
